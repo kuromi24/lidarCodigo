@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import paho.mqtt.client as mqtt
 import numpy as np
 import json
+import laspy
 
 MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
@@ -11,8 +12,12 @@ MQTT_USER = "user"
 MQTT_PASSWORD = "password"
 MQTT_TOPIC = "Lidar/Distance"
 
-# Matriz [theta][phi] para ángulos de 0° a 180° (181 valores)
-matriz_distancias = np.zeros((181, 181))
+
+#--------------------27/11/26-------------------------------------------------------
+# Cambiar la matriz por un array de 181x181 para almacenar los datos y porbar export
+#------------------------------------------------------------------------------------
+
+matriz_distancias = np.zeros((181, 181)) 
 barrido_listo = False
 
 # Función que se ejecuta cuando nos conectamos al broker
@@ -39,7 +44,7 @@ def on_message(client, userdata, msg):
         if theta is not None and 0 <= int(theta) <= 180 and len(distances) == 181:
             theta = int(theta)
             # Guardar en matriz[theta][phi] (convertido a metros dividiendo entre 100; quita '/ 100.0' si lo quieres en cm)
-            matriz_distancias[theta] = np.array(distances, dtype=float) / 100.0
+            matriz_distancias[theta] = np.array(distances, dtype=float)
             
             print(f"Guardado theta={theta}° | Primeras 5 distancias (m): {np.round(matriz_distancias[theta][:5], 2)}")
             
@@ -48,7 +53,7 @@ def on_message(client, userdata, msg):
                 barrido_listo = True
                 client.disconnect()
         else:
-            print(f"⚠️ Mensaje ignorado: theta={theta}, cantidad de distancias={len(distances)}")
+            print(f" Mensaje ignorado: theta={theta}, cantidad de distancias={len(distances)}")
         
     except json.JSONDecodeError:
         print("Error: El mensaje recibido no es un JSON válido.")
@@ -60,9 +65,9 @@ def dibujar_plot_3d(matriz):
     THETA, PHI = np.meshgrid(angulos_rad, angulos_rad, indexing='ij')
 
     # Convertir coordenadas esféricas (r, theta, phi) a cartesianas (X, Y, Z)
-    X = matriz * np.cos(THETA) * np.cos(PHI)
-    Y = matriz * np.cos(THETA) * np.sin(PHI)
-    Z = matriz * np.sin(THETA)
+    X = matriz * np.sin(THETA) * np.cos(PHI)
+    Y = matriz * np.sin(THETA) * np.sin(PHI)
+    Z = matriz * np.cos(THETA)
 
     fig = plt.figure(figsize=(9, 7))
     ax = fig.add_subplot(111, projection='3d')
@@ -79,6 +84,20 @@ def dibujar_plot_3d(matriz):
     ax.set_box_aspect([1, 1, 1])
 
     plt.show()
+    # 1. Crear la cabecera definiendo escala (1 mm = 0.001 m) y origen
+    header = laspy.LasHeader(point_format=3, version="1.2")
+    header.scales = np.array([0.001, 0.001, 0.001])
+    header.offsets = np.array([0.0, 0.0, 0.0])
+
+    # 2. Crear el objeto LAS y asignar los arrays APLANADOS (.ravel())
+    las_file = laspy.LasData(header)
+    las_file.x = X.ravel()
+    las_file.y = Y.ravel()
+    las_file.z = Z.ravel()
+
+    # 3. Guardar el archivo
+    las_file.write("nube_puntos.las")
+    print("Archivo nube_puntos.las guardado correctamente.")
 
 # --- Configuración del Cliente MQTT ---
 cliente = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)

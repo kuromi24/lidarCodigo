@@ -11,14 +11,14 @@
 #define PIN_SERVO_AZ 18
 #define PIN_SERVO_LA 19
 
+//Definición de los sensores y actuadores
 DFRobot_TFmini TFmini;
 Servo MOTOR_AZ;
 Servo MOTOR_LA;
 
 
-int status = WL_IDLE_STATUS; 
 //-----------------------Credenciales de Wifi -------------------
-
+int status = WL_IDLE_STATUS; 
 const char *NAME = "sagemcomDF20";
 const char *PASS = "EDUZNU2N2CDNJN"; 
 
@@ -32,6 +32,7 @@ const char* MQTT_PASSWORD = "";
 const char* MQTT_TOPIC = "Lidar/Distance";
 //---------------------------------------------------------------
 
+//Inicialización de cliente MQTT
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -39,11 +40,14 @@ JsonDocument doc;
 
 uint16_t  distanceT;
 
+//-----------------------Declaración de funciones -------------------
 void wifiSetup();
 void mqttSetup();
 void servoSetup();
+//-------------------------------------------------------------------
 
 void setup() {
+
   Serial.begin(115200);
   Serial.println("Iniciando");
 
@@ -52,7 +56,7 @@ void setup() {
   servoSetup();
 
   Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
-  TFmini.begin(Serial2);//Problema aqui
+  TFmini.begin(Serial2);
   Serial.println("Iniciando");
   delay(1000);
 
@@ -60,47 +64,43 @@ void setup() {
 }
 
 void loop() {
-  client.loop();
-
-  //
   
-  for(uint8_t j = 0; j <= 180;j++){
-  Serial.println("for1");
-  MOTOR_AZ.write(j);
+  for(uint8_t j = 0; j <= 180;j++)//Comienza el barrido con el ángulo theta
+  { 
+    Serial.println("for1");
+    MOTOR_AZ.write(j);
+
     doc["theta"] = j;
     JsonArray distances = doc["distances"].to<JsonArray>();
-    
-    if(j%2 == 0){ 
-      for(uint8_t i = 0; i <= 180; i++){
+    /*El array se irá enviado con el siguiente formato : 
+    theta: <valor>, distances: [<valor1>, <valor2>, ...] */
+
+    if(j%2 == 0) //Si el ángulo es par o cero irá hacia un lado si no al contrario
+    { 
+      for(uint8_t i = 0; i <= 180; i++) //Movemos el angulo phi y creamos el vector de distancias
+      {
         client.loop();
-        Serial.println("for2");
         MOTOR_LA.write(i);
-        
-        if(TFmini.measure()){  
-          Serial.println("MEDIDA");                    //Measure Distance and get signal strength
+        if(TFmini.measure())
+        {                     
           distanceT = TFmini.getDistance();
-          distances.add(distanceT);        //Get distance data
-          Serial.print("Distance = ");
-          Serial.print(distanceT);
-          Serial.println("cm");
+          distances.add(distanceT); //Añadimos la distancia
        }
 
       }
    }else{
-    for(uint8_t i = 181; i > 0; i--){
+    for(uint8_t i = 181; i > 0; i--)
+    {
         client.loop();
-        Serial.println("for3");
         MOTOR_LA.write(i);
         if(TFmini.measure()){                                
-          distanceT = TFmini.getDistance();//Measure Distance
+          distanceT = TFmini.getDistance();
           distances.add(distanceT);     
-          Serial.print("Distance = ");
-          Serial.print(distanceT);
-          Serial.println("cm"); 
         }
         
       } 
     }
+    //Serializamos el JSON y lo publicamos en el tópico MQTT
     char buffer[1024];
     size_t n = serializeJson(doc, buffer);
     client.publish(MQTT_TOPIC, buffer, n);
@@ -108,7 +108,8 @@ void loop() {
 }
 
 
- void wifiSetup(){
+ void wifiSetup()
+ {
   WiFi.mode(WIFI_STA);
   WiFi.begin(NAME, PASS);
   while(status != WL_CONNECTED){
@@ -119,7 +120,8 @@ void loop() {
   Serial.print("WiFi conectado. IP del ESP32: ");
 }
 
-void mqttSetup(){
+void mqttSetup()
+{
   client.setClient(espClient);
   client.setServer(MQTT_SERVER, MQTT_PORT);
   while (!client.connected()){
@@ -135,8 +137,9 @@ void mqttSetup(){
     client.setBufferSize(1024); 
 }
 
-void servoSetup(){
-  // Configuración obligatoria para la librería ESP32Servo actual
+void servoSetup()
+{
+//Alocamos los timer para confirmar el correcto funcionamiento 
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
   ESP32PWM::allocateTimer(2);

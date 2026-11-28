@@ -17,7 +17,9 @@ MQTT_TOPIC = "Lidar/Distance"
 # Cambiar la matriz por un array de 181x181 para almacenar los datos y porbar export
 #------------------------------------------------------------------------------------
 
-matriz_distancias = np.zeros((181, 181)) 
+X = np.zeros((181* 181))
+Y = np.zeros((181* 181)) 
+Z = np.zeros((181* 181)) 
 barrido_listo = False
 
 # Función que se ejecuta cuando nos conectamos al broker
@@ -28,7 +30,7 @@ def on_connect(client, userdata, flags, reason_code, properties=None):
 
 # Función que se ejecuta cada vez que llega un mensaje
 def on_message(client, userdata, msg):
-    global matriz_distancias, barrido_listo
+    global X, Y, Z, barrido_listo
     try:
         # 1. Decodificar el mensaje de bytes a texto (String)
         payload_texto = msg.payload.decode('utf-8')
@@ -43,10 +45,16 @@ def on_message(client, userdata, msg):
         # Validar que theta esté en rango y que lleguen 181 distancias (phi de 0 a 180)
         if theta is not None and 0 <= int(theta) <= 180 and len(distances) == 181:
             theta = int(theta)
-            # Guardar en matriz[theta][phi] (convertido a metros dividiendo entre 100; quita '/ 100.0' si lo quieres en cm)
-            matriz_distancias[theta] = np.array(distances, dtype=float)
+            for i in range(181):
+                phi = i
+                r = distances[i]
+                # Convertir coordenadas esféricas a cartesianas
+                X[theta * 181 + phi] = r * np.sin(np.deg2rad(theta)) * np.cos(np.deg2rad(phi))
+                Y[theta * 181 + phi] = r * np.sin(np.deg2rad(theta)) * np.sin(np.deg2rad(phi))
+                Z[theta * 181 + phi] = r * np.cos(np.deg2rad(theta))
+           #matriz_distancias[theta] = np.array(distances, dtype=float)
             
-            print(f"Guardado theta={theta}° | Primeras 5 distancias (m): {np.round(matriz_distancias[theta][:5], 2)}")
+            print(f"Guardado theta={theta}° con {len(distances)} distancias.")
             
             # Cuando llega el ángulo final (180), pausamos loop_forever() para poder dibujar
             if theta == 180:
@@ -59,20 +67,16 @@ def on_message(client, userdata, msg):
         print("Error: El mensaje recibido no es un JSON válido.")
         print("Mensaje bruto:", msg.payload)
 
-def dibujar_plot_3d(matriz):
+def dibujar_plot_3d(X, Y, Z):
     # Crear rejilla de ángulos theta y phi (0° a 180°) en radianes
     angulos_rad = np.deg2rad(np.arange(181))
     THETA, PHI = np.meshgrid(angulos_rad, angulos_rad, indexing='ij')
 
-    # Convertir coordenadas esféricas (r, theta, phi) a cartesianas (X, Y, Z)
-    X = matriz * np.sin(THETA) * np.cos(PHI)
-    Y = matriz * np.sin(THETA) * np.sin(PHI)
-    Z = matriz * np.cos(THETA)
 
     fig = plt.figure(figsize=(9, 7))
     ax = fig.add_subplot(111, projection='3d')
 
-    sc = ax.scatter(X, Y, Z, c=matriz, cmap='plasma', s=2)
+    sc = ax.scatter(X, Y, Z, c=Z, cmap='plasma', s=2)
     fig.colorbar(sc, label='Distancia (m)')
     ax.scatter([0], [0], [0], color='red', s=80, label='Sensor Lidar (0,0,0)')
 
@@ -116,7 +120,7 @@ while True:
         
         if barrido_listo:
             print("\nBarrido completo (0° a 180°). Abriendo gráfico 3D...")
-            dibujar_plot_3d(matriz_distancias)
+            dibujar_plot_3d(X, Y, Z)
             
     except KeyboardInterrupt:
         print("\nDesconectando...")

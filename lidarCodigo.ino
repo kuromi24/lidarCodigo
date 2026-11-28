@@ -67,7 +67,7 @@ void loop() {
   
   for(uint8_t j = 0; j <= 180;j++)//Comienza el barrido con el ángulo theta
   { 
-    Serial.println("for1");
+    
     MOTOR_AZ.write(j);
 
     doc["theta"] = j;
